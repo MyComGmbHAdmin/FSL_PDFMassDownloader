@@ -1,0 +1,15 @@
+<apex:page 
+    controller="WrapperController"
+    contentType="text/html" 
+    applyHtmlTag="false"
+    docType="html-5.0"
+    name="pdfwrapper"
+    renderAs="advanced_pdf"
+    showHeader="false" 
+    sidebar="false"
+    standardStylesheets="false"
+    lightningStylesheets="false"
+    readOnly="false"
+    >
+    <apex:outputText value="{!pageContent}" escape="false" />
+</apex:page>

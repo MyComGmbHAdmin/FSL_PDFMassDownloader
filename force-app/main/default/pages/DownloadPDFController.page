@@ -1,0 +1,181 @@
+<apex:page controller="DownloadPDFController">
+    <apex:form>
+        <style>
+            .container {
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f5f5f5;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                font-family: 'Arial', sans-serif;
+            }
+            h1 {
+                text-align: center;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            th, td {
+                padding: 10px;
+                text-align: left;
+                border-bottom: 1px solid #ddd;
+            }
+            label {
+                display: block;
+                margin-top: 20px;
+                font-weight: bold;
+            }
+            select {
+                width: 100%;
+                padding: 10px;
+                margin-bottom: 10px;
+            }
+            .download-button {
+                display: flex;
+                justify-content: center;
+                margin-top: 20px;
+            }
+        </style>
+        <div class="container">
+            <h1>Selected Service Appointments</h1>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Appointment Number</th>
+                        <th>Status</th>
+                        <th>Street</th>
+                        <th>City</th>
+                        <th>Earliest Start Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <apex:repeat value="{!selectedAppointments}" var="app">
+                        <tr data-appointment-number="{!app.AppointmentNumber}">
+                            <td>{!app.AppointmentNumber}</td>
+                            <td>{!app.Status}</td>
+                            <td>{!app.Street}</td>
+                            <td>{!app.City}</td>
+                            <td>{!app.EarliestStartTime}</td>
+                        </tr>
+                    </apex:repeat>
+                </tbody>
+            </table>
+            <label for="templateSelect">Select Template:</label>
+            <select id="templateSelect">
+                <apex:repeat value="{!templateOptions}" var="option">
+                    <option value="{!option.value}">{!option.label}</option>
+                </apex:repeat>
+            </select>
+            <div class="download-button">
+                <apex:commandButton value="Download PDFs" onclick="callDownloadFunction();" reRender="none"/>
+            </div>
+        </div>
+    </apex:form>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.3.0/jszip.min.js"></script>
+    <script>
+        function base64ToBlob(base64Data, contentType) {
+            contentType = contentType || '';
+            const sliceSize = 1024;
+            const byteCharacters = atob(base64Data);
+            const byteArrays = [];
+
+            for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+                const slice = byteCharacters.slice(offset, offset + sliceSize);
+                const byteNumbers = new Array(slice.length);
+
+                for (let i = 0; i < slice.length; i++) {
+                    byteNumbers[i] = slice.charCodeAt(i);
+                }
+
+                const byteArray = new Uint8Array(byteNumbers);
+                byteArrays.push(byteArray);
+            }
+
+            return new Blob(byteArrays, { type: contentType });
+        }
+
+        var selectedTemplateId = ''; // Variable to store the selected value
+        var zip = new JSZip(); // Create a new JSZip instance
+
+        document.addEventListener("DOMContentLoaded", function() {
+            // When the page is loaded, get the currently selected value
+            selectedTemplateId = document.getElementById('templateSelect').value;
+            console.log(selectedTemplateId);
+        });
+
+        document.getElementById('templateSelect').addEventListener('change', function() {
+            selectedTemplateId = this.value;
+            console.log(selectedTemplateId);
+        });
+
+        async function callDownloadFunction() {
+            try {
+                const idsString = '{!paramId}';
+                const ids = idsString.slice(1, -1).split(', ');
+
+                // Create an async function to use await inside forEach
+                async function processId(id, index) {
+                    console.log("Processing ID:", id);
+                    console.log(selectedTemplateId);
+                    console.log('paramId ' + '{!paramId}');
+                    console.log('idsString' + idsString);
+
+                    // Get the AppointmentNumber from the data-appointment-number attribute of the current row
+                    const appointmentNumber = document.querySelectorAll('tr')[index].getAttribute('data-appointment-number');
+
+                    const title = await invokeApexMethod('{!$RemoteAction.DownloadPDFController.createTitle}', appointmentNumber, id);
+                    const pdfResult = await invokeApexMethod('{!$RemoteAction.DownloadPDFController.createPDFUsingTemplate}', selectedTemplateId, id);
+
+                    // Create a Blob object from the base64-encoded PDF data
+                    const pdfBlob = base64ToBlob(pdfResult, 'application/pdf');
+
+                    // Add the PDF to the zip file
+                    zip.file(`${title}.pdf`, pdfBlob);
+
+                    // Handle success cases if needed
+                }
+
+                const batchSize = 10; // Batch size
+
+                // Loop through batches of IDs
+                for (let startIndex = 0; startIndex < ids.length; startIndex += batchSize) {
+                    const batchIds = ids.slice(startIndex, startIndex + batchSize);
+                    await Promise.all(batchIds.map((id, index) => processId(id, startIndex + index + 1)));
+                }
+
+                // Generate the zip file as a Blob
+                zip.generateAsync({ type: 'blob' })
+                    .then(function (blob) {
+                        // Create a download link for the zip file
+                        const downloadLink = document.createElement('a');
+                        downloadLink.download = 'Service_Appointments.zip';
+                        downloadLink.href = URL.createObjectURL(blob);
+                        downloadLink.click();
+                    });
+
+            } catch (error) {
+                console.error(error);
+                // Handle the error case (e.g., display an error message to the user)
+            }
+        }
+
+        function invokeApexMethod(methodName, ...params) {
+            return new Promise((resolve, reject) => {
+                Visualforce.remoting.Manager.invokeAction(
+                    methodName,
+                    ...params,
+                    (result, event) => {
+                        if (event.status) {
+                            resolve(result);
+                        } else {
+                            reject(event.message);
+                        }
+                    },
+                    { escape: true }
+                );
+            });
+        }
+    </script>
+</apex:page>
