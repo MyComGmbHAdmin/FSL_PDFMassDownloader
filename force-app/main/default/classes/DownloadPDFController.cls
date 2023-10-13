@@ -30,7 +30,7 @@ global class DownloadPDFController {
     }
 
     global void fetchServiceAppointments() {
-        this.selectedAppointments = [SELECT Id, AppointmentNumber, Status, Street, City, EarliestStartTime FROM ServiceAppointment WHERE Id IN :paramId];
+        this.selectedAppointments = [SELECT Id, AppointmentNumber, Status, Street, City, EarliestStartTime, AnschreibenErstelltAm__c FROM ServiceAppointment WHERE Id IN :paramId];
     }
 
     // Method to load the available PDF templates into the select list
@@ -73,5 +73,23 @@ global class DownloadPDFController {
             return pdfPage.getContentAsPDF();
         }
         
+    }
+
+    @RemoteAction
+    global static String updateDateTimeField(String selectedAppointmentIds) {
+        List<Id> appointmentIds = (List<Id>) JSON.deserialize(selectedAppointmentIds, List<Id>.class);
+        List<ServiceAppointment> serviceAppointmentsToBeUpdated = new List<ServiceAppointment>();
+        
+        for(ServiceAppointment appointment : [SELECT Id, AnschreibenErstelltAm__c FROM ServiceAppointment WHERE Id IN :appointmentIds]) {
+            appointment.AnschreibenErstelltAm__c = System.now().addHours(2);
+            serviceAppointmentsToBeUpdated.add(appointment);
+        }
+        
+        try {
+            upsert serviceAppointmentsToBeUpdated;
+            return 'Success';
+        } catch (Exception e) {
+            return e.getMessage();
+        }
     }
 }
