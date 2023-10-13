@@ -37,6 +37,42 @@
                 justify-content: center;
                 margin-top: 20px;
             }
+            .loading-screen {
+                display: none;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(255, 255, 255, 0.7);
+                z-index: 999;
+                text-align: center;
+            }
+
+            .loading-spinner {
+                border: 6px solid #f3f3f3;
+                border-top: 6px solid #3498db;
+                border-radius: 50%;
+                width: 50px;
+                height: 50px;
+                animation: spin 2s linear infinite;
+                margin: 0 auto;
+            }
+
+            .loading-text {
+                font-weight: bold;
+                margin-top: 20px;
+                font-size: 1.2em;
+                color: #333;
+            }
+
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
         </style>
         <div class="container">
             <h1>Selected Service Appointments</h1>
@@ -71,6 +107,10 @@
             <div class="download-button">
                 <apex:commandButton value="Download PDFs" onclick="callDownloadFunction();" reRender="none"/>
             </div>
+            <div id="loading-screen" class="loading-screen">
+                <div class="loading-spinner"></div>
+                <div class="loading-text">Downloading...</div>
+            </div>
         </div>
     </apex:form>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.3.0/jszip.min.js"></script>
@@ -102,26 +142,22 @@
         document.addEventListener("DOMContentLoaded", function() {
             // When the page is loaded, get the currently selected value
             selectedTemplateId = document.getElementById('templateSelect').value;
-            console.log(selectedTemplateId);
         });
 
         document.getElementById('templateSelect').addEventListener('change', function() {
             selectedTemplateId = this.value;
-            console.log(selectedTemplateId);
         });
 
         async function callDownloadFunction() {
             try {
+                const loadingScreen = document.querySelector('#loading-screen');
+                loadingScreen.style.display = 'flex';
+                
                 const idsString = '{!paramId}';
                 const ids = idsString.slice(1, -1).split(', ');
 
                 // Create an async function to use await inside forEach
                 async function processId(id, index) {
-                    console.log("Processing ID:", id);
-                    console.log(selectedTemplateId);
-                    console.log('paramId ' + '{!paramId}');
-                    console.log('idsString' + idsString);
-
                     // Get the AppointmentNumber from the data-appointment-number attribute of the current row
                     const appointmentNumber = document.querySelectorAll('tr')[index].getAttribute('data-appointment-number');
 
@@ -133,8 +169,6 @@
 
                     // Add the PDF to the zip file
                     zip.file(`${title}.pdf`, pdfBlob);
-
-                    // Handle success cases if needed
                 }
 
                 const batchSize = 10; // Batch size
@@ -153,6 +187,8 @@
                         downloadLink.download = 'Service_Appointments.zip';
                         downloadLink.href = URL.createObjectURL(blob);
                         downloadLink.click();
+                    }).then(function (result) {
+                        loadingScreen.style.display = 'none';
                     });
 
             } catch (error) {
