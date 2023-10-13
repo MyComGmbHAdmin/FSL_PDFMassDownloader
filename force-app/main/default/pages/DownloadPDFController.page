@@ -47,7 +47,7 @@
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(255, 255, 255, 0.7);
+                background: rgba(255, 255, 255, 0.9);
                 z-index: 999;
                 text-align: center;
             }
@@ -72,6 +72,36 @@
             @keyframes spin {
                 0% { transform: rotate(0deg); }
                 100% { transform: rotate(360deg); }
+            }
+
+            .overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(255, 255, 255, 0.9);
+                z-index: 999;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+
+            .overlay .checkmark, .overlay .loading-text {
+                font-weight: bold;
+                margin: 10px;
+            }
+
+            .checkmark {
+                font-size: 3em;
+                /* Add any other styling for the checkmark here */
+            }
+
+            .success-text {
+                font-size: 1.5em;
+                /* Add any other styling for the success text here */
+                font-weight: bold;
+                margin: 10px;
             }
         </style>
         <div class="container">
@@ -101,15 +131,19 @@
             <label for="templateSelect">Select Template:</label>
             <select id="templateSelect">
                 <apex:repeat value="{!templateOptions}" var="option">
-                    <option value="{!option.value}">{!option.label}</option>
+                    <option value="{!option.value}" data-label="{!option.label}">{!option.label}</option>
                 </apex:repeat>
             </select>
             <div class="download-button">
                 <apex:commandButton value="Download PDFs" onclick="callDownloadFunction();" reRender="none"/>
             </div>
-            <div id="loading-screen" class="loading-screen">
+            <div id="loading-screen" class="loading-screen" >
                 <div class="loading-spinner"></div>
                 <div class="loading-text">Downloading...</div>
+            </div>
+            <div id="success-message" style="display: none;" class="overlay">
+                <div class="checkmark">&#10004;</div>
+                <div class="success-text">Success</div>
             </div>
         </div>
     </apex:form>
@@ -137,20 +171,25 @@
         }
 
         var selectedTemplateId = ''; // Variable to store the selected value
+        var selectedTemplateLabel = '';
         var zip = new JSZip(); // Create a new JSZip instance
 
         document.addEventListener("DOMContentLoaded", function() {
             // When the page is loaded, get the currently selected value
             selectedTemplateId = document.getElementById('templateSelect').value;
+            selectedTemplateLabel = document.querySelector('#templateSelect option:checked').getAttribute('data-label');
         });
 
         document.getElementById('templateSelect').addEventListener('change', function() {
             selectedTemplateId = this.value;
+            selectedTemplateLabel = this.options[this.selectedIndex].getAttribute('data-label');
         });
 
         async function callDownloadFunction() {
             try {
                 const loadingScreen = document.querySelector('#loading-screen');
+                const successMessage = document.querySelector('#success-message');
+
                 loadingScreen.style.display = 'flex';
                 
                 const idsString = '{!paramId}';
@@ -162,7 +201,7 @@
                     const appointmentNumber = document.querySelectorAll('tr')[index].getAttribute('data-appointment-number');
 
                     const title = await invokeApexMethod('{!$RemoteAction.DownloadPDFController.createTitle}', appointmentNumber, id);
-                    const pdfResult = await invokeApexMethod('{!$RemoteAction.DownloadPDFController.createPDFUsingTemplate}', selectedTemplateId, id);
+                    const pdfResult = await invokeApexMethod('{!$RemoteAction.DownloadPDFController.createPDFUsingTemplate}', appointmentNumber + '_' + selectedTemplateLabel, selectedTemplateId, id);
 
                     // Create a Blob object from the base64-encoded PDF data
                     const pdfBlob = base64ToBlob(pdfResult, 'application/pdf');
@@ -187,8 +226,26 @@
                         downloadLink.download = 'Service_Appointments.zip';
                         downloadLink.href = URL.createObjectURL(blob);
                         downloadLink.click();
+
+                        const selectedAppointmentsArray = '{!selectedAppointments}'
+                        .slice(1, -1)  // Remove the surrounding square brackets
+                        .split(',')
+                        .map(id => id.trim());
+
+                        invokeApexMethodSync('{!$RemoteAction.DownloadPDFController.addLinkAndTimestamp}', JSON.stringify(selectedAppointmentsArray));
+                        
                     }).then(function (result) {
-                        loadingScreen.style.display = 'none';
+                        setTimeout(function () {
+                            loadingScreen.style.display = 'none';
+
+                            const successMessage = document.getElementById('success-message');
+
+                            successMessage.style.display = 'flex';
+
+                            setTimeout(function () {
+                                successMessage.style.display = 'none';
+                            }, 2000); // Display the success message for 2 seconds (2000 milliseconds)
+                        }, 500); // Delay for 0.5 seconds (500 milliseconds)
                     });
 
             } catch (error) {
@@ -213,5 +270,20 @@
                 );
             });
         }
+
+        function invokeApexMethodSync(methodName, ...params) {
+            Visualforce.remoting.Manager.invokeAction(
+                methodName,
+                ...params,
+                (result, event) => {
+                    if (event.status) {
+                        console.log('Remote action was successful:', result);
+                    } else {
+                        console.error('Remote action failed:', event.message);
+                    }
+                },
+                { escape: true }
+            );
+        }      
     </script>
 </apex:page>

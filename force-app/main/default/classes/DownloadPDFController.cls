@@ -30,15 +30,22 @@ global class DownloadPDFController {
     }
 
     global void fetchServiceAppointments() {
-        this.selectedAppointments = [SELECT Id, AppointmentNumber, Status, Street, City, EarliestStartTime FROM ServiceAppointment WHERE Id IN :paramId];
+        this.selectedAppointments = [SELECT Id, AppointmentNumber, Status, Street, City, EarliestStartTime, AnschreibenErstelltAm__c FROM ServiceAppointment WHERE Id IN :paramId];
     }
 
     // Method to load the available PDF templates into the select list
     global void loadTemplateOptions() {
-        List<PDFTemplate__c> templates = CreatePDF.getListOfPDFTemplates();
+        List<PDFTemplate__c> templates = getListOfPDFTemplates();
         for (PDFTemplate__c template : templates) {
             templateOptions.add(new SelectOption(template.Id, template.Name));
         }
+    }
+
+    public static List<PDFTemplate__c> getListOfPDFTemplates() {
+        return [
+            SELECT Id, Name, ObjectName__c, FileTitle__c
+            FROM PDFTemplate__c
+        ];
     }
 
     @RemoteAction
@@ -50,8 +57,43 @@ global class DownloadPDFController {
     }
 
     @RemoteAction
-    global static String createPDFUsingTemplate(Id templateId, Id recordId) {
+    global static String createPDFUsingTemplate(String title, Id templateId, Id recordId) {
         Blob pdfPage = getPDF(templateId, recordId);
+        // Create an item of content, then get the link to that
+        // then save as a file with the parent object
+        ContentVersion file = new ContentVersion();
+        file.ContentLocation = 'S';
+
+        // Make substitutions for the filename as required
+        String nameOfFile = '';
+        nameOfFile = Utilities.replaceAdditionalVariables(createTitle(title, recordId), recordId);
+        nameOfFile = Utilities.replaceAllFieldReferences(nameOfFile, recordId);
+
+        file.pathOnClient = nameOfFile + '.pdf';
+        file.title = nameOfFile;
+        file.versionData = pdfPage;
+        Database.SaveResult saveResult;
+        try {
+            saveResult = Database.insert(file);
+        }
+        catch (DmlException e) {
+            System.debug('Failed to insert file, error is ' + e.getMessage());
+        }
+
+        Id contentDocumentId = [
+            SELECT ContentDocumentId 
+            FROM ContentVersion 
+            WHERE Id =:file.Id
+        ].ContentDocumentId;
+
+        ContentDocumentLink link = new ContentDocumentLink();
+        link.ContentDocumentId = contentDocumentId;
+        link.LinkedEntityId = recordId;
+        link.ShareType = 'I'; // Inferred permission
+
+        //This part will need some improvements, because linking over 50 PDFs will assign some Files with the wrong LinkedEntityId (for small chunks it works fine)
+        insert link;
+
         return EncodingUtil.base64Encode(pdfPage);
     }
 
@@ -66,5 +108,23 @@ global class DownloadPDFController {
             return pdfPage.getContentAsPDF();
         }
         
+    }
+
+    @RemoteAction
+    global static String addLinkAndTimestamp(String selectedAppointmentIds) {
+        List<Id> appointmentIds = (List<Id>) JSON.deserialize(selectedAppointmentIds, List<Id>.class);
+        List<ServiceAppointment> serviceAppointmentsToBeUpdated = new List<ServiceAppointment>();
+        
+        for(ServiceAppointment appointment : [SELECT Id, AnschreibenErstelltAm__c FROM ServiceAppointment WHERE Id IN :appointmentIds]) {
+            appointment.AnschreibenErstelltAm__c = System.now();
+            serviceAppointmentsToBeUpdated.add(appointment);
+        }
+        
+        try {
+            upsert serviceAppointmentsToBeUpdated;
+            return 'Success';
+        } catch (Exception e) {
+            return e.getMessage();
+        }
     }
 }
