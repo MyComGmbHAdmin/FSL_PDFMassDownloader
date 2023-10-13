@@ -35,10 +35,17 @@ global class DownloadPDFController {
 
     // Method to load the available PDF templates into the select list
     global void loadTemplateOptions() {
-        List<PDFTemplate__c> templates = CreatePDF.getListOfPDFTemplates();
+        List<PDFTemplate__c> templates = getListOfPDFTemplates();
         for (PDFTemplate__c template : templates) {
             templateOptions.add(new SelectOption(template.Id, template.Name));
         }
+    }
+
+    public static List<PDFTemplate__c> getListOfPDFTemplates() {
+        return [
+            SELECT Id, Name, ObjectName__c, FileTitle__c
+            FROM PDFTemplate__c
+        ];
     }
 
     @RemoteAction
