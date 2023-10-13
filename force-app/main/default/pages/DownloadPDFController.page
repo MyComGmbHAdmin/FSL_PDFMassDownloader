@@ -101,7 +101,7 @@
             <label for="templateSelect">Select Template:</label>
             <select id="templateSelect">
                 <apex:repeat value="{!templateOptions}" var="option">
-                    <option value="{!option.value}">{!option.label}</option>
+                    <option value="{!option.value}" data-label="{!option.label}">{!option.label}</option>
                 </apex:repeat>
             </select>
             <div class="download-button">
@@ -137,15 +137,18 @@
         }
 
         var selectedTemplateId = ''; // Variable to store the selected value
+        var selectedTemplateLabel = '';
         var zip = new JSZip(); // Create a new JSZip instance
 
         document.addEventListener("DOMContentLoaded", function() {
             // When the page is loaded, get the currently selected value
             selectedTemplateId = document.getElementById('templateSelect').value;
+            selectedTemplateLabel = document.querySelector('#templateSelect option:checked').getAttribute('data-label');
         });
 
         document.getElementById('templateSelect').addEventListener('change', function() {
             selectedTemplateId = this.value;
+            selectedTemplateLabel = this.options[this.selectedIndex].getAttribute('data-label');
         });
 
         async function callDownloadFunction() {
@@ -162,7 +165,7 @@
                     const appointmentNumber = document.querySelectorAll('tr')[index].getAttribute('data-appointment-number');
 
                     const title = await invokeApexMethod('{!$RemoteAction.DownloadPDFController.createTitle}', appointmentNumber, id);
-                    const pdfResult = await invokeApexMethod('{!$RemoteAction.DownloadPDFController.createPDFUsingTemplate}', selectedTemplateId, id);
+                    const pdfResult = await invokeApexMethod('{!$RemoteAction.DownloadPDFController.createPDFUsingTemplate}', appointmentNumber + '_' + selectedTemplateLabel, selectedTemplateId, id);
 
                     // Create a Blob object from the base64-encoded PDF data
                     const pdfBlob = base64ToBlob(pdfResult, 'application/pdf');
@@ -193,7 +196,7 @@
                         .split(',')
                         .map(id => id.trim());
 
-                        invokeApexMethodSync('{!$RemoteAction.DownloadPDFController.updateDateTimeField}', JSON.stringify(selectedAppointmentsArray));
+                        invokeApexMethodSync('{!$RemoteAction.DownloadPDFController.addLinkAndTimestamp}', JSON.stringify(selectedAppointmentsArray));
                         
                     }).then(function (result) {
                         loadingScreen.style.display = 'none';

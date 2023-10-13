@@ -2,6 +2,11 @@ global class DownloadPDFController {
     global List<ServiceAppointment> selectedAppointments { get; set; }
     global List<SelectOption> templateOptions { get; set; }
     global List<String> paramId { get; set; }
+    global static List<ContentDocumentLink> documentLink { get; set; }
+
+    static {
+        documentLink = new List<ContentDocumentLink>();
+    }
 
     global DownloadPDFController() {
         // Initialize Controller by capturing parameters from the URL
@@ -57,8 +62,43 @@ global class DownloadPDFController {
     }
 
     @RemoteAction
-    global static String createPDFUsingTemplate(Id templateId, Id recordId) {
+    global static String createPDFUsingTemplate(String title, Id templateId, Id recordId) {
         Blob pdfPage = getPDF(templateId, recordId);
+        // Create an item of content, then get the link to that
+        // then save as a file with the parent object
+        ContentVersion file = new ContentVersion();
+        file.ContentLocation = 'S';
+
+        // Make substitutions for the filename as required
+        String nameOfFile = '';
+        nameOfFile = Utilities.replaceAdditionalVariables(createTitle(title, recordId), recordId);
+        nameOfFile = Utilities.replaceAllFieldReferences(nameOfFile, recordId);
+
+        file.pathOnClient = nameOfFile + '.pdf';
+        file.title = nameOfFile;
+        file.versionData = pdfPage;
+        Database.SaveResult saveResult;
+        try {
+            saveResult = Database.insert(file);
+        }
+        catch (DmlException e) {
+            System.debug('Failed to insert file, error is ' + e.getMessage());
+        }
+
+        Id contentDocumentId = [
+            SELECT ContentDocumentId 
+            FROM ContentVersion 
+            WHERE Id =:file.Id
+        ].ContentDocumentId;
+
+        ContentDocumentLink link = new ContentDocumentLink();
+        link.ContentDocumentId = contentDocumentId;
+        link.LinkedEntityId = recordId;
+        link.ShareType = 'I'; // Inferred permission
+        documentLink.add(link);
+        System.debug('documentLink '+documentLink);
+        //insert link;
+
         return EncodingUtil.base64Encode(pdfPage);
     }
 
@@ -76,7 +116,7 @@ global class DownloadPDFController {
     }
 
     @RemoteAction
-    global static String updateDateTimeField(String selectedAppointmentIds) {
+    global static String addLinkAndTimestamp(String selectedAppointmentIds) {
         List<Id> appointmentIds = (List<Id>) JSON.deserialize(selectedAppointmentIds, List<Id>.class);
         List<ServiceAppointment> serviceAppointmentsToBeUpdated = new List<ServiceAppointment>();
         
@@ -87,6 +127,7 @@ global class DownloadPDFController {
         
         try {
             upsert serviceAppointmentsToBeUpdated;
+            upsert documentLink;
             return 'Success';
         } catch (Exception e) {
             return e.getMessage();
