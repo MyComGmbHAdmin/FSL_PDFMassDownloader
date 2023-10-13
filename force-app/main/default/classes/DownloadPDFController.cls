@@ -2,11 +2,6 @@ global class DownloadPDFController {
     global List<ServiceAppointment> selectedAppointments { get; set; }
     global List<SelectOption> templateOptions { get; set; }
     global List<String> paramId { get; set; }
-    global static List<ContentDocumentLink> documentLink { get; set; }
-
-    static {
-        documentLink = new List<ContentDocumentLink>();
-    }
 
     global DownloadPDFController() {
         // Initialize Controller by capturing parameters from the URL
@@ -95,9 +90,9 @@ global class DownloadPDFController {
         link.ContentDocumentId = contentDocumentId;
         link.LinkedEntityId = recordId;
         link.ShareType = 'I'; // Inferred permission
-        documentLink.add(link);
-        System.debug('documentLink '+documentLink);
-        //insert link;
+
+        //This part will need some improvements, because linking over 50 PDFs will assign some Files with the wrong LinkedEntityId (for small chunks it works fine)
+        insert link;
 
         return EncodingUtil.base64Encode(pdfPage);
     }
@@ -121,13 +116,12 @@ global class DownloadPDFController {
         List<ServiceAppointment> serviceAppointmentsToBeUpdated = new List<ServiceAppointment>();
         
         for(ServiceAppointment appointment : [SELECT Id, AnschreibenErstelltAm__c FROM ServiceAppointment WHERE Id IN :appointmentIds]) {
-            appointment.AnschreibenErstelltAm__c = System.now().addHours(2);
+            appointment.AnschreibenErstelltAm__c = System.now();
             serviceAppointmentsToBeUpdated.add(appointment);
         }
         
         try {
             upsert serviceAppointmentsToBeUpdated;
-            upsert documentLink;
             return 'Success';
         } catch (Exception e) {
             return e.getMessage();
